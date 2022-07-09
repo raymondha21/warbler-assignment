@@ -20,6 +20,14 @@
 
         <button class="btn btn-primary btn-block btn-lg">Log in</button>
       </form>
+      <form method="POST" action="/users/add_like/{{ messages.id }}" id="messages-form">
+        <button class="
+          btn 
+          btn-sm 
+          {{'btn-primary' if messages.id in likes else 'btn-secondary'}}"
+        >
+          <i class="fa fa-thumbs-up"></i> 
+        </button>
     </div>
   </div>
 

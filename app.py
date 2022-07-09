@@ -1,7 +1,7 @@
 from multiprocessing.sharedctypes import Value
 import os
 
-from flask import Flask, render_template, request, flash, redirect, session, g
+from flask import Flask, render_template, request, flash, redirect, session, g, abort
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
@@ -153,7 +153,7 @@ def users_show(user_id):
                 .order_by(Message.timestamp.desc())
                 .limit(100)
                 .all())
-    return render_template('users/show.html', user=user, messages=messages)
+    return render_template('users/show.html', user=user, messages=messages,likes = user.likes)
 
 
 @app.route('/users/<int:user_id>/following')
@@ -252,18 +252,24 @@ def profile():
 def add_like(message_id):
     """Add like to current user"""
 
-    user_id = g.user.id
-    new_like = Likes(user_id=user_id,message_id=message_id)
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
 
-    db.session.add(new_like)
+    user = g.user
+
+    liked_msg = Message.query.get_or_404(message_id)
+
+    if liked_msg in user.likes:
+        user.likes = [like for like in user.likes if like != liked_msg]
+
+    else:
+        new_like = Likes(user_id=user.id,message_id=message_id)
+        db.session.add(new_like)
+
     db.session.commit()
 
     return redirect('/')
-
-
-    
-
-
 
 @app.route('/users/delete', methods=["POST"])
 def delete_user():
