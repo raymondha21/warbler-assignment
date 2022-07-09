@@ -1,11 +1,12 @@
+from multiprocessing.sharedctypes import Value
 import os
 
 from flask import Flask, render_template, request, flash, redirect, session, g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
-from forms import UserAddForm, LoginForm, MessageForm
-from models import db, connect_db, User, Message
+from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -113,7 +114,9 @@ def login():
 def logout():
     """Handle logout of user."""
 
-    # IMPLEMENT THIS
+    do_logout()
+
+    return redirect('/login')
 
 
 ##############################################################################
@@ -175,6 +178,18 @@ def users_followers(user_id):
 
     user = User.query.get_or_404(user_id)
     return render_template('users/followers.html', user=user)
+    
+@app.route('/users/<int:user_id>/likes',methods=["GET"])
+def show_likes(user_id):
+    """Show list of messages liked by this user."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+
+    return render_template('users/likes.html', user=user)
 
 
 @app.route('/users/follow/<int:follow_id>', methods=['POST'])
@@ -211,7 +226,43 @@ def stop_following(follow_id):
 def profile():
     """Update profile for current user."""
 
-    # IMPLEMENT THIS
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    
+    form = UserEditForm(obj=g.user)
+
+    if form.validate_on_submit():
+        try:
+            if User.authenticate(g.user.username,form.password.data):
+                form.populate_obj(g.user)
+                db.session.add(g.user)
+                db.session.commit()
+                return redirect(f'/users/{g.user.id}')
+            
+
+        except ValueError as e:
+            flash("Invalid password, please try again.",'danger')
+            return redirect('/')
+            
+    return render_template('/users/edit.html',form=form)
+
+@app.route('/users/add_like/<int:message_id>',methods=["POST"])
+def add_like(message_id):
+    """Add like to current user"""
+
+    user_id = g.user.id
+    new_like = Likes(user_id=user_id,message_id=message_id)
+
+    db.session.add(new_like)
+    db.session.commit()
+
+    return redirect('/')
+
+
+    
+
 
 
 @app.route('/users/delete', methods=["POST"])
@@ -292,13 +343,16 @@ def homepage():
     """
 
     if g.user:
+        following_ids = [f.id for f in g.user.following] + [g.user.id]
+
         messages = (Message
                     .query
+                    .filter(Message.user_id.in_(following_ids))
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
 
-        return render_template('home.html', messages=messages)
+        return render_template('home.html', messages=messages, likes = [msg.id for msg in g.user.likes])
 
     else:
         return render_template('home-anon.html')
